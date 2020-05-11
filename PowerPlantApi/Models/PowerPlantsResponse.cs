@@ -23,8 +23,20 @@ namespace PowerPlantApi.Models
                     _powerPlants = new List<PowerPlantResponse>();
                     foreach (var powerPlant in _payload.powerplants)
                     {
-                        var porwerPlan = new PowerPlantResponse(_payload.fuels, powerPlant);
-                        _powerPlants.Add(porwerPlan);
+                        switch (powerPlant.type)
+                        {
+                            case "gasfired":
+                                _powerPlants.Add(new GasfiredPowerPlantResponse(_payload.fuels, powerPlant));
+                                break;
+
+                            case "turbojet":
+                                _powerPlants.Add(new TurbojetPowerPlantResponse(_payload.fuels, powerPlant));
+                                break;
+
+                            case "windturbine":
+                                _powerPlants.Add(new WindturbinePowerPlantResponse(_payload.fuels, powerPlant));
+                                break;
+                        }
                     }
                 }
                 return _powerPlants;
@@ -32,10 +44,10 @@ namespace PowerPlantApi.Models
         }
     }
 
-    public class PowerPlantResponse
+    public abstract class PowerPlantResponse
     {
-        private Fuels _fuels;
-        private PowerPlant _powerPlant;
+        protected Fuels _fuels;
+        protected PowerPlant _powerPlant;
 
         public PowerPlantResponse(Fuels fuels, PowerPlant powerPlant)
         {
@@ -47,26 +59,9 @@ namespace PowerPlantApi.Models
         public int p { get; set; } = 0;
 
         [JsonIgnore]
-        public decimal meritOrder
-        {
-            get
-            {
-                switch (_powerPlant.type)
-                {
-                    case "gasfired":
-                        return (1 / _powerPlant.efficiency) * _fuels.gaseuroMWh;
+        public abstract decimal meritOrder { get; }
 
-                    case "turbojet":
-                        return _fuels.kerosineeuroMWh;
-
-                    default:
-                        return 0;
-                }
-            }
-        }
-        
-
-        public int Product(int load)
+        public virtual int Product(int load)
         {
             if (load < _powerPlant.pmin)
             {
@@ -84,5 +79,74 @@ namespace PowerPlantApi.Models
             return 0;
         }
 
+    }
+
+
+    public class GasfiredPowerPlantResponse : PowerPlantResponse
+    {
+        public GasfiredPowerPlantResponse(Fuels fuels, PowerPlant powerPlant) : base(fuels, powerPlant)
+        {
+        }
+
+        [JsonIgnore]
+        public override decimal meritOrder
+        {
+            get
+            {
+                return (1 / _powerPlant.efficiency) * _fuels.gaseuroMWh;
+            }
+        }
+    }
+
+    public class TurbojetPowerPlantResponse : PowerPlantResponse
+    {
+        public TurbojetPowerPlantResponse(Fuels fuels, PowerPlant powerPlant) : base(fuels, powerPlant)
+        {
+        }
+
+        [JsonIgnore]
+        public override decimal meritOrder
+        {
+            get
+            {
+                return _fuels.kerosineeuroMWh;
+            }
+        }
+    }
+
+    public class WindturbinePowerPlantResponse : PowerPlantResponse
+    {
+        public WindturbinePowerPlantResponse(Fuels fuels, PowerPlant powerPlant) : base(fuels, powerPlant)
+        {
+        }
+
+        [JsonIgnore]
+        public override decimal meritOrder
+        {
+            get
+            {
+                return 0;
+            }
+        }
+
+        public override int Product(int load)
+        {
+            if (load < _powerPlant.pmin)
+            {
+                p = _powerPlant.pmin;
+                return 0;
+            }
+
+            var realPmax = (_powerPlant.pmax * _fuels.wind) / 100;
+
+            if (load >= realPmax)
+            {
+                p = realPmax;
+                return load - realPmax;
+            }
+
+            p = load;
+            return 0;
+        }
     }
 }
